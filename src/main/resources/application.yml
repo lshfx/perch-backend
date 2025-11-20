@@ -1,0 +1,117 @@
+spring:
+  application:
+    name: perch-backend
+  main:
+    allow-bean-definition-overriding: true
+
+  # 数据源配置
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/perch_db
+    username: admin
+    password: ${SERVER_POSTGRESQL_PWD}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # Redis 配置
+  data:
+    redis:
+      host: localhost
+      port: 6380
+      password: ${SERVER_REDIS_PWD}
+      database: 0
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+  # Spring AI 配置
+  ai:
+    zhipuai:
+      api-key: ${ZHIPU_KEY}
+
+# JWT 配置
+jwt:
+  # JWT 密钥（生产环境建议使用环境变量或配置中心）
+  secret: ${JWT_SECRET:perch-backend-jwt-secret-key-for-development-and-testing-please-change-in-production}
+  # JWT 过期时间（毫秒）- 默认 15分钟
+  expiration: ${JWT_EXPIRATION:900000}
+  # JWT 刷新令牌过期时间（毫秒）- 默认 1小时
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+  # JWT Token 前缀
+  token-prefix: Bearer
+  # JWT Token 请求头名称
+  header-name: Authorization
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.perch: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.data: DEBUG
+    com.baomidou.mybatisplus: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# MyBatis Plus 配置
+mybatis-plus:
+  # mapper xml 文件位置
+  mapper-locations: classpath:mapper/*.xml
+  # 实体类扫描包路径
+  type-aliases-package: com.perch.entity
+  # 全局配置
+  global-config:
+    # 数据库配置
+    db-config:
+      # 主键类型：auto 自增，assign_id 雪花算法
+      id-type: auto
+      # 逻辑删除配置
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      # 字段填充策略
+      insert-strategy: not_null
+      update-strategy: not_null
+    # 控制台 print mybatis-plus 的 LOGO
+    banner: true
+  # 配置类型转换器（驼峰命名转换）
+  configuration:
+    # 开启驼峰命名转换
+    map-underscore-to-camel-case: true
+    # 缓存配置
+    cache-enabled: false
+    # 延迟加载
+    lazy-loading-enabled: false
+    # 多结果集
+    multiple-result-sets-enabled: true
+    # 使用列别名
+    use-column-label: true
+    # 自动映射
+    auto-mapping-behavior: partial
+    # 自动映射未知列
+    auto-mapping-unknown-column-behavior: warning
+    # 主键生成器
+    use-generated-keys: true
+    # 执行器类型：simple batch reuse
+    default-executor-type: simple
+    # 设置超时时间
+    default-statement-timeout: 25
+    # 设置获取数据的策略
+    default-fetch-size: 100
+    # 是否将SQL语句中的数据库字段名转换为实体类属性名
+    call-setters-on-nulls: false
+    # 本地缓存机制
+    local-cache-scope: session
+    # 数据库类型
+    jdbc-type-for-null: other
+    # 日志实现
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
