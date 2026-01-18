@@ -1,21 +1,26 @@
 package com.perch.service;
 
-import com.perch.entity.User;
+import com.baomidou.mybatisplus.extension.service.IService;
+import com.perch.pojo.common.Result;
+import com.perch.pojo.dto.request.RegisterRequest;
+import com.perch.pojo.dto.response.LoginResponse;
+import com.perch.pojo.entity.User;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * 用户服务接口
  */
-public interface UserService {
+public interface UserService extends IService<User> {
 
     /**
      * 用户注册
      * @param user 用户信息
      * @return 注册结果
      */
-    User register(User user);
+    LoginResponse register(RegisterRequest user);
 
     /**
      * 根据用户名查询用户
@@ -89,10 +94,30 @@ public interface UserService {
      */
     List<User> findAll();
 
+
     /**
      * 根据用户名查询用户（为 UserDetailsService 准备）
      * @param username 用户名
      * @return 用户信息
      */
     User loadUserByUsername(String username);
+
+    /**
+     * 用户登录业务逻辑（包含参数验证和用户信息组装）
+     * @param email 邮箱
+     * @param password 密码
+     * @param deviceInfo 设备信息
+     * @return 登录结果（包含用户信息和token信息）
+     */
+    Map<String, Object> loginUser(String email, String password, String deviceInfo);
+
+    Result<LoginResponse> loginByWechat(String wechatCode);
+
+    Result<LoginResponse> loginByEmail(String email, String password);
+
+    /**
+     * 获取当前登录用户信息
+     * @return 用户信息
+     */
+    Map<String, Object> getCurrentUserInfo();
 }

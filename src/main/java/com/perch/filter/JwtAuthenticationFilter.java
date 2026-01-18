@@ -78,7 +78,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             SecurityContextHolder.getContext().setAuthentication(authentication);
 
                             // 更新 Token 最后访问时间
-                            tokenService.updateLastAccessTime(tokenId);
+                            Object userIdObj = claims.get("userId");
+                            Long userId = null;
+                            if (userIdObj instanceof Number) {
+                                userId = ((Number) userIdObj).longValue();
+                            } else if (userIdObj != null) {
+                                try {
+                                    userId = Long.valueOf(userIdObj.toString());
+                                } catch (NumberFormatException ignored) {
+                                }
+                            }
+                            tokenService.updateLastAccessTime(tokenId, userId);
 
                             log.debug("用户 {} 认证成功，Token: {}", username, tokenId);
                         }
@@ -121,10 +131,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
 
-        // 跳过公开的 API 路径
+        // Skip public auth endpoints except logout and /me (needs JWT context)
+        if (path.startsWith("/api/auth/")
+                && !path.startsWith("/api/auth/logout")
+                && !path.startsWith("/api/auth/me")) {
+            return true;
+        }
+
         return path.startsWith("/api/ping") ||
                path.startsWith("/api/ai/chat") ||
-               path.startsWith("/api/auth/") ||
                path.startsWith("/public/") ||
                path.startsWith("/error") ||
                path.startsWith("/actuator/");

@@ -1,6 +1,6 @@
 package com.perch.service.impl;
 
-import com.perch.entity.User;
+import com.perch.pojo.entity.User;
 import com.perch.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
             // 检查用户状态
             if (user.getStatus() == 0) {
-                throw new UsernameNotFoundException("用户已被禁用: " + username);
+                throw new UsernameNotFoundException("用户已被禁用: " + user.getId());
             }
 
             // 构建权限列表
@@ -41,8 +41,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
             // 返回 Spring Security 的 User 对象
             return org.springframework.security.core.userdetails.User.builder()
-                    .username(user.getUsername())
-                    .password(user.getPassword())
+                    .username(String.valueOf(user.getId()))
+                    .password(user.getPasswordHash())
                     .authorities(Collections.singletonList(authority))
                     .accountExpired(false)
                     .accountLocked(false)

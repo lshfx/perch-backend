@@ -22,6 +22,12 @@ public class RedisConstants {
      */
     public static final String USER_PREFIX = "login:user:";
 
+    /***
+     * 验证码前缀
+     */
+    public static final String VERIFY_CODE_PREFIX = "verify:email:";
+
+
     /**
      * 在线统计 Key
      */

@@ -1,6 +1,6 @@
 package com.perch.controller;
 
-import com.perch.entity.common.Result;
+import com.perch.pojo.common.Result;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;

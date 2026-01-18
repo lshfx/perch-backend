@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -67,7 +68,7 @@ public class JwtUtils {
      * @return SecretKey
      */
     private SecretKey getSecretKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes());
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -156,10 +157,10 @@ public class JwtUtils {
     public boolean isTokenExpired(String token) {
         try {
             Date expiration = getExpirationFromToken(token);
-            return !expiration.before(new Date());
+            return expiration.before(new Date());
         } catch (JwtException e) {
             log.error("Token 验证失败: {}", e.getMessage());
-            return false;
+            return true;
         }
     }
 
@@ -172,7 +173,7 @@ public class JwtUtils {
     public boolean validateToken(String token, String username) {
         try {
             String tokenUsername = getUsernameFromToken(token);
-            return tokenUsername.equals(username) && isTokenExpired(token);
+            return tokenUsername.equals(username) && !isTokenExpired(token);
         } catch (JwtException e) {
             log.error("Token 验证失败: {}", e.getMessage());
             return false;
@@ -199,7 +200,7 @@ public class JwtUtils {
     public String refreshToken(String refreshToken) {
         try {
             String username = getUsernameFromToken(refreshToken);
-            if (username != null && isTokenExpired(refreshToken)) {
+            if (username != null && !isTokenExpired(refreshToken)) {
                 return generateToken(username);
             }
         } catch (JwtException e) {

@@ -31,6 +31,18 @@ spring:
           min-idle: 0
           max-wait: -1ms
 
+  mail:
+    host: smtp.qq.com
+    username: 3538313283@qq.com
+    password: nuwgyyuijkijdagc
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
   # Spring AI 配置
   ai:
     zhipuai:
@@ -115,3 +127,7 @@ mybatis-plus:
     jdbc-type-for-null: other
     # 日志实现
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+wechat:
+  appid: wxd9e9ce4fb2922f05 # 你的小程序 AppID
+  secret: a85968c4fcd478d78a652049d1f13889 # 你的小程序 AppSecret

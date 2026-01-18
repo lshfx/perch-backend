@@ -1,7 +1,7 @@
 package com.perch.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.perch.entity.User;
+import com.perch.pojo.entity.User;
 import org.apache.ibatis.annotations.Mapper;
 
 /**

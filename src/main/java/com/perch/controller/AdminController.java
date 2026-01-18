@@ -1,6 +1,6 @@
 package com.perch.controller;
 
-import com.perch.entity.common.Result;
+import com.perch.pojo.common.Result;
 import com.perch.service.TokenService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

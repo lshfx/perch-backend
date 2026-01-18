@@ -1,15 +1,14 @@
-package com.perch.entity;
+package com.perch.pojo.entity;
 
 import java.time.LocalDateTime;
-import java.util.Date;
-import java.io.Serializable;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * (ChatMessages)表实体类
+ * (ChatMessage)表实体类
  *
  * @author lsh
  * @since 2025-11-20 13:51:16
@@ -18,7 +17,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ChatMessages{
+public class ChatMessage {
 
     private Long id;
 
@@ -36,4 +35,3 @@ public class ChatMessages{
 
     private LocalDateTime createdAt;
 }
-

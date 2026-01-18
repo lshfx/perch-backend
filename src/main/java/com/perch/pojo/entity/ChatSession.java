@@ -1,15 +1,14 @@
-package com.perch.entity;
+package com.perch.pojo.entity;
 
 import java.time.LocalDateTime;
-import java.util.Date;
-import java.io.Serializable;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * (Users)表实体类
+ * (ChatSession)表实体类
  *
  * @author lsh
  * @since 2025-11-20 13:51:18
@@ -18,24 +17,19 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Users{
+public class ChatSession {
 
     private Long id;
 
-    private String email;
+    private Long userId;
 
-    private String passwordHash;
+    private String title;
 
-    private String nickname;
+    private String advisorType;
 
-    private String avatarUrl;
-
-    private String role;
-
-    private Integer status;
+    private Boolean isDeleted;
 
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
 }
-

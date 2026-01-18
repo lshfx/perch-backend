@@ -1,4 +1,4 @@
-package com.perch.entity.common;
+package com.perch.pojo.common;
 
 import lombok.Data;
 

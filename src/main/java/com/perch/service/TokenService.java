@@ -54,11 +54,24 @@ public interface TokenService {
      * @param oldTokenId 旧 Token ID
      * @return 新 Token 信息
      */
-    Map<String, Object> refreshToken(String oldTokenId);
+    Map<String, Object> refreshToken(String oldTokenId, String refreshToken);
+
+    /**
+     * 校验 Token 并返回结果
+     * @param tokenId Token ID
+     * @return 校验结果
+     */
+    Map<String, Object> validateTokenInfo(String tokenId);
+
+    /**
+     * 登出当前 Token
+     * @param token Token 字符串
+     */
+    void logout(String token);
 
     /**
      * 更新 Token 最后访问时间
      * @param tokenId Token ID
      */
-    void updateLastAccessTime(String tokenId);
+    void updateLastAccessTime(String tokenId, Long userId);
 }

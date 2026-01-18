@@ -25,45 +25,48 @@ public class SecurityConfig {
 
     /**
      * 安全过滤器链配置
+     *
      * @param http HttpSecurity
      * @return SecurityFilterChain
      * @throws Exception 异常
      */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            // 禁用 CSRF（适用于 API 开发）
-            .csrf(AbstractHttpConfigurer::disable)
 
-            // 配置会话管理为无状态
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        // 禁用 CSRF（适用于 API 开发）
+        http.csrf(AbstractHttpConfigurer::disable)
 
-            // 配置请求授权
-            .authorizeHttpRequests(auth -> auth
-                // 允许匿名访问的接口
-                .requestMatchers("/api/ping", "/api/ai/chat").permitAll()
-                // 认证相关接口（登录、登出、刷新Token等）
-                .requestMatchers("/api/auth/**").permitAll()
-                // 管理员接口需要ADMIN角色
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                // 公开接口
-                .requestMatchers("/public/**").permitAll()
-                // 错误页面
-                .requestMatchers("/error/**").permitAll()
-                // 监控端点（开发环境）
-                .requestMatchers("/actuator/**").permitAll()
-                // 其他请求需要认证
-                .anyRequest().authenticated()
-            )
+                // 配置会话管理为无状态
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-            // 添加 JWT 认证过滤器
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // 配置请求授权
+                .authorizeHttpRequests(auth -> auth
+                        // 允许匿名访问的接口
+                        .requestMatchers("/api/ping", "/api/ai/chat").permitAll()
+                        .requestMatchers("/api/auth/logout", "/api/auth/me").authenticated()
+                        // 认证相关接口（登录、登出、刷新Token等）
+                        .requestMatchers("/api/auth/**").permitAll()
+                        // 管理员接口需要ADMIN角色
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // 公开接口
+                        .requestMatchers("/public/**").permitAll()
+                        // 错误页面
+                        .requestMatchers("/error/**").permitAll()
+                        // 监控端点（开发环境）
+                        .requestMatchers("/actuator/**").permitAll()
+                        // 其他请求需要认证
+                        .anyRequest().authenticated()
+                )
+
+                // 添加 JWT 认证过滤器
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
     /**
      * 密码编码器
+     *
      * @return BCryptPasswordEncoder
      */
     @Bean

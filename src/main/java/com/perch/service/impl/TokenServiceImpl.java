@@ -2,12 +2,15 @@ package com.perch.service.impl;
 
 import com.alibaba.fastjson2.JSON;
 import com.perch.constants.RedisConstants;
+import com.perch.exception.CustomException;
 import com.perch.service.TokenService;
 import com.perch.utils.JwtUtils;
+import io.jsonwebtoken.Claims;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -59,15 +62,15 @@ public class TokenServiceImpl implements TokenService {
         tokenInfo.put("lastAccessTime", LocalDateTime.now().format(DATE_FORMATTER));
         tokenInfo.put("refreshToken", refreshToken);
 
-        // 存储 Token（设置过期时间与 JWT 一致）
+        // 存储 Token（设置过期时间与 refreshToken 一致，便于刷新）
         String tokenKey = RedisConstants.buildTokenKey(tokenId);
         redisTemplate.opsForHash().putAll(tokenKey, tokenInfo);
-        redisTemplate.expire(tokenKey, jwtUtils.getExpiration(), TimeUnit.MILLISECONDS);
+        redisTemplate.expire(tokenKey, jwtUtils.getRefreshExpiration(), TimeUnit.MILLISECONDS);
 
         // 将 Token 添加到用户的 Token 列表
         String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
         redisTemplate.opsForSet().add(userTokensKey, tokenId);
-        redisTemplate.expire(userTokensKey, jwtUtils.getExpiration(), TimeUnit.MILLISECONDS);
+        redisTemplate.expire(userTokensKey, jwtUtils.getRefreshExpiration(), TimeUnit.MILLISECONDS);
 
         // 更新在线统计
         updateOnlineStats();
@@ -94,14 +97,8 @@ public class TokenServiceImpl implements TokenService {
         if (tokenId == null) {
             return false;
         }
-
-        try {
-            String tokenKey = RedisConstants.buildTokenKey(tokenId);
-            return redisTemplate.hasKey(tokenKey);
-        } catch (Exception e) {
-            log.error("验证 Token 失败: {}", e.getMessage());
-            return false;
-        }
+        String tokenKey = RedisConstants.buildTokenKey(tokenId);
+        return Boolean.TRUE.equals(redisTemplate.hasKey(tokenKey));
     }
 
     /**
@@ -114,26 +111,21 @@ public class TokenServiceImpl implements TokenService {
         if (tokenId == null) {
             return;
         }
+        String tokenKey = RedisConstants.buildTokenKey(tokenId);
+        Map<Object, Object> tokenInfo = redisTemplate.opsForHash().entries(tokenKey);
 
-        try {
-            String tokenKey = RedisConstants.buildTokenKey(tokenId);
-            Map<Object, Object> tokenInfo = redisTemplate.opsForHash().entries(tokenKey);
+        if (!tokenInfo.isEmpty()) {
+            Long userId = Long.valueOf(tokenInfo.get("userId").toString());
 
-            if (!tokenInfo.isEmpty()) {
-                Long userId = Long.valueOf(tokenInfo.get("userId").toString());
+            // 从用户的 Token 列表中移除
+            String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
+            redisTemplate.opsForSet().remove(userTokensKey, tokenId);
 
-                // 从用户的 Token 列表中移除
-                String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
-                redisTemplate.opsForSet().remove(userTokensKey, tokenId);
+            // 删除 Token
+            redisTemplate.delete(tokenKey);
 
-                // 删除 Token
-                redisTemplate.delete(tokenKey);
-
-                log.info("Token {} 已撤销", tokenId);
-                updateOnlineStats();
-            }
-        } catch (Exception e) {
-            log.error("撤销 Token 失败: {}", e.getMessage());
+            log.info("Token {} 已撤销", tokenId);
+            updateOnlineStats();
         }
     }
 
@@ -144,28 +136,24 @@ public class TokenServiceImpl implements TokenService {
      */
     @Override
     public void revokeAllUserTokens(Long userId) {
-        try {
-            String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
-            Set<Object> tokenIds = redisTemplate.opsForSet().members(userTokensKey);
+        String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
+        Set<Object> tokenIds = redisTemplate.opsForSet().members(userTokensKey);
 
-            if (tokenIds != null && !tokenIds.isEmpty()) {
-                // 删除所有 Token
-                List<String> tokenKeys = new ArrayList<>();
-                for (Object tokenId : tokenIds) {
-                    tokenKeys.add(RedisConstants.buildTokenKey(tokenId.toString()));
-                }
-
-                if (!tokenKeys.isEmpty()) {
-                    redisTemplate.delete(tokenKeys);
-                    log.info("用户 {} 的 {} 个 Token 已全部撤销", userId, tokenKeys.size());
-                }
-
-                // 删除用户的 Token 列表
-                redisTemplate.delete(userTokensKey);
-                updateOnlineStats();
+        if (tokenIds != null && !tokenIds.isEmpty()) {
+            // 删除所有 Token
+            List<String> tokenKeys = new ArrayList<>();
+            for (Object tokenId : tokenIds) {
+                tokenKeys.add(RedisConstants.buildTokenKey(tokenId.toString()));
             }
-        } catch (Exception e) {
-            log.error("撤销用户所有 Token 失败: {}", e.getMessage());
+
+            if (!tokenKeys.isEmpty()) {
+                redisTemplate.delete(tokenKeys);
+                log.info("用户 {} 的 {} 个 Token 已全部撤销", userId, tokenKeys.size());
+            }
+
+            // 删除用户的 Token 列表
+            redisTemplate.delete(userTokensKey);
+            updateOnlineStats();
         }
     }
 
@@ -177,23 +165,22 @@ public class TokenServiceImpl implements TokenService {
     @Override
     public List<Map<String, Object>> getUserTokens(Long userId) {
         List<Map<String, Object>> tokens = new ArrayList<>();
+        String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
+        Set<Object> tokenIds = redisTemplate.opsForSet().members(userTokensKey);
 
-        try {
-            String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
-            Set<Object> tokenIds = redisTemplate.opsForSet().members(userTokensKey);
+        if (tokenIds == null) {
+            return tokens;
+        }
 
-            for (Object tokenId : tokenIds) {
-                String tokenKey = RedisConstants.buildTokenKey(tokenId.toString());
-                Map<Object, Object> tokenInfo = redisTemplate.opsForHash().entries(tokenKey);
+        for (Object tokenId : tokenIds) {
+            String tokenKey = RedisConstants.buildTokenKey(tokenId.toString());
+            Map<Object, Object> tokenInfo = redisTemplate.opsForHash().entries(tokenKey);
 
-                if (!tokenInfo.isEmpty()) {
-                    Map<String, Object> tokenMap = new HashMap<>();
-                    tokenInfo.forEach((key, value) -> tokenMap.put(key.toString(), value));
-                    tokens.add(tokenMap);
-                }
+            if (!tokenInfo.isEmpty()) {
+                Map<String, Object> tokenMap = new HashMap<>();
+                tokenInfo.forEach((key, value) -> tokenMap.put(key.toString(), value));
+                tokens.add(tokenMap);
             }
-        } catch (Exception e) {
-            log.error("获取用户 Token 列表失败: {}", e.getMessage());
         }
 
         return tokens;
@@ -206,15 +193,9 @@ public class TokenServiceImpl implements TokenService {
     @Override
     public Map<String, Object> getOnlineStats() {
         Map<String, Object> stats = new HashMap<>();
-
-        try {
-            Object onlineCount = redisTemplate.opsForValue().get(RedisConstants.ONLINE_STATS_KEY);
-            stats.put("onlineCount", onlineCount != null ? Integer.parseInt(onlineCount.toString()) : 0);
-            stats.put("timestamp", LocalDateTime.now().format(DATE_FORMATTER));
-        } catch (Exception e) {
-            log.error("获取在线统计失败: {}", e.getMessage());
-            stats.put("onlineCount", 0);
-        }
+        Object onlineCount = redisTemplate.opsForValue().get(RedisConstants.ONLINE_STATS_KEY);
+        stats.put("onlineCount", onlineCount != null ? Integer.parseInt(onlineCount.toString()) : 0);
+        stats.put("timestamp", LocalDateTime.now().format(DATE_FORMATTER));
 
         return stats;
     }
@@ -225,43 +206,98 @@ public class TokenServiceImpl implements TokenService {
      * @return: java.util.Map<java.lang.String,java.lang.Object>
      */
     @Override
-    public Map<String, Object> refreshToken(String oldTokenId) {
-        try {
-            String tokenKey = RedisConstants.buildTokenKey(oldTokenId);
-            Map<Object, Object> tokenInfo = redisTemplate.opsForHash().entries(tokenKey);
-
-            if (tokenInfo.isEmpty()) {
-                return null;
-            }
-
-            Long userId = Long.valueOf(tokenInfo.get("userId").toString());
-            String username = tokenInfo.get("username").toString();
-            String deviceInfo = tokenInfo.get("deviceInfo").toString();
-
-            // 撤销旧 Token
-            revokeToken(oldTokenId);
-
-            // 创建新 Token
-            return createToken(userId, username, deviceInfo);
-        } catch (Exception e) {
-            log.error("刷新 Token 失败: {}", e.getMessage());
-            return null;
+    public Map<String, Object> refreshToken(String oldTokenId, String refreshToken) {
+        // 1. 基础参数校验
+        if (!StringUtils.hasText(oldTokenId) || !StringUtils.hasText(refreshToken)) {
+            throw new CustomException(400, "TokenId或RefreshToken不能为空");
         }
+
+        // 2. 查询 Redis
+        String tokenKey = RedisConstants.buildTokenKey(oldTokenId);
+        Map<Object, Object> tokenInfo = redisTemplate.opsForHash().entries(tokenKey);
+
+        if (tokenInfo.isEmpty()) {
+            throw new CustomException(401, "Token无效或已过期");
+        }
+
+        // 3. 校验 Refresh Token 是否匹配
+        Object storedRefreshToken = tokenInfo.get("refreshToken");
+        // 注意：request中的refreshToken上面已经校验过 hasText，所以这里不用判 null，只需判 stored
+        if (storedRefreshToken == null || !storedRefreshToken.toString().equals(refreshToken)) {
+            log.warn("Refresh Token 校验失败: tokenId={}", oldTokenId);
+            throw new CustomException(401, "RefreshToken无效或不匹配");
+        }
+
+        // 4. 校验 Refresh Token 是否过期
+        // 【修复】去掉取反符号 '!'，过期了才抛异常
+        if (jwtUtils.isTokenExpired(refreshToken)) {
+            log.warn("Refresh Token 已过期: tokenId={}", oldTokenId);
+            // 这里可以考虑顺手把 Redis 里的脏数据清掉：revokeToken(oldTokenId);
+            throw new CustomException(401, "RefreshToken已过期");
+        }
+
+        // 5. 校验用户是否匹配
+        String username = (String) tokenInfo.get("username");
+        String refreshUsername = jwtUtils.getUsernameFromToken(refreshToken);
+
+        if (username == null || !username.equals(refreshUsername)) {
+            log.warn("Refresh Token 用户不匹配: tokenId={}", oldTokenId);
+            throw new CustomException(401, "RefreshToken用户不匹配");
+        }
+
+        // 6. 提取其他信息 (建议做非空检查)
+        Object userIdObj = tokenInfo.get("userId");
+        if (userIdObj == null) {
+            log.error("Redis数据异常，缺失userId: tokenId={}", oldTokenId);
+            throw new CustomException(500, "会话数据异常");
+        }
+        Long userId = Long.valueOf(userIdObj.toString());
+        String deviceInfo = (String) tokenInfo.get("deviceInfo");
+
+        // 7. 执行刷新 (撤销旧的 -> 生成新的)
+        revokeToken(oldTokenId);
+
+        return createToken(userId, username, deviceInfo);
+    }
+
+    @Override
+    public Map<String, Object> validateTokenInfo(String tokenId) {
+        if (!StringUtils.hasText(tokenId)) {
+            throw new CustomException(400, "TokenId不能为空");
+        }
+
+        boolean isValid = validateToken(tokenId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("valid", isValid);
+        result.put("tokenId", tokenId);
+        return result;
+    }
+
+    @Override
+    public void logout(String token) {
+        if (!StringUtils.hasText(token)) {
+            throw new CustomException(401, "未提供有效Token");
+        }
+
+        Claims claims = jwtUtils.getAllClaimsFromToken(token);
+        if (claims == null || claims.get("tokenId") == null) {
+            throw new CustomException(401, "Token无效或已过期");
+        }
+
+        String tokenId = claims.get("tokenId").toString();
+        revokeToken(tokenId);
+        log.info("Token {} 已登出", tokenId);
     }
 
     /**
      * 更新在线统计
      */
     private void updateOnlineStats() {
-        try {
-            // 统计所有 Token Key 的数量
-            Set<String> tokenKeys = redisTemplate.keys(RedisConstants.TOKEN_PREFIX + "*");
-            int onlineCount = tokenKeys != null ? tokenKeys.size() : 0;
+        // 统计所有 Token Key 的数量
+        Set<String> tokenKeys = redisTemplate.keys(RedisConstants.TOKEN_PREFIX + "*");
+        int onlineCount = tokenKeys != null ? tokenKeys.size() : 0;
 
-            redisTemplate.opsForValue().set(RedisConstants.ONLINE_STATS_KEY, onlineCount, 24, TimeUnit.HOURS);
-        } catch (Exception e) {
-            log.error("更新在线统计失败: {}", e.getMessage());
-        }
+        redisTemplate.opsForValue().set(RedisConstants.ONLINE_STATS_KEY, onlineCount, 24, TimeUnit.HOURS);
     }
 
     /**
@@ -269,13 +305,16 @@ public class TokenServiceImpl implements TokenService {
      * @param tokenId Token ID
      */
     @Override
-    public void updateLastAccessTime(String tokenId) {
-        try {
-            String tokenKey = RedisConstants.buildTokenKey(tokenId);
-            redisTemplate.opsForHash().put(tokenKey, "lastAccessTime",
-                LocalDateTime.now().format(DATE_FORMATTER));
-        } catch (Exception e) {
-            log.error("更新访问时间失败: {}", e.getMessage());
+    public void updateLastAccessTime(String tokenId, Long userId) {
+        String tokenKey = RedisConstants.buildTokenKey(tokenId);
+        redisTemplate.opsForHash().put(tokenKey, "lastAccessTime",
+            LocalDateTime.now().format(DATE_FORMATTER));
+        // 每次请求刷新 Redis 过期时间，确保活跃用户可继续刷新令牌
+        redisTemplate.expire(tokenKey, jwtUtils.getRefreshExpiration(), TimeUnit.MILLISECONDS);
+
+        if (userId != null) {
+            String userTokensKey = RedisConstants.buildUserTokenListKey(userId);
+            redisTemplate.expire(userTokensKey, jwtUtils.getRefreshExpiration(), TimeUnit.MILLISECONDS);
         }
     }
 }
