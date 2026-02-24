@@ -1,9 +1,11 @@
 package com.perch.config;
 
 import com.perch.filter.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -18,6 +20,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(securedEnabled = true, jsr250Enabled = true)
 public class SecurityConfig {
 
     @Autowired
@@ -41,8 +44,9 @@ public class SecurityConfig {
 
                 // 配置请求授权
                 .authorizeHttpRequests(auth -> auth
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         // 允许匿名访问的接口
-                        .requestMatchers("/api/ping", "/api/ai/chat").permitAll()
+                        .requestMatchers("/api/ping").permitAll()
                         .requestMatchers("/api/auth/logout", "/api/auth/me").authenticated()
                         // 认证相关接口（登录、登出、刷新Token等）
                         .requestMatchers("/api/auth/**").permitAll()
@@ -64,13 +68,5 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * 密码编码器
-     *
-     * @return BCryptPasswordEncoder
-     */
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+
 }

@@ -1,6 +1,5 @@
 package com.perch.service.impl;
 
-import com.alibaba.fastjson2.JSON;
 import com.perch.constants.RedisConstants;
 import com.perch.exception.CustomException;
 import com.perch.service.TokenService;
@@ -49,6 +48,7 @@ public class TokenServiceImpl implements TokenService {
         claims.put("tokenId", tokenId);
         claims.put("userId", userId);
 
+        log.info("All Claims: {}", claims.toString());
         String token = jwtUtils.generateToken(username, claims);
         String refreshToken = jwtUtils.generateRefreshToken(username);
 

@@ -72,7 +72,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
             // 3.2 校验验证码 (从 Redis 取)
             String redisKey = VERIFY_CODE_PREFIX + request.getEmail();
-            String cacheCode = (String) redisTemplate.opsForValue().get(redisKey);
+            String cacheCode = String.valueOf(redisTemplate.opsForValue().get(redisKey));
             if (StringUtils.isBlank(cacheCode) || !cacheCode.equals(request.getEmailVerifyCode())) {
                 throw new CustomException(400, "验证码错误或已过期");
             }

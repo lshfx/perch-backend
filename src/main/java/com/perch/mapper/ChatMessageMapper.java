@@ -2,6 +2,7 @@ package com.perch.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.perch.pojo.entity.ChatMessage;
+import org.apache.ibatis.annotations.Mapper;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Repository;
  * @author lsh
  * @since 2025-11-20 13:51:18
  */
-@Repository
+@Mapper
 public interface ChatMessageMapper extends BaseMapper<ChatMessage> {
 
 }

@@ -8,6 +8,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,6 +18,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import com.perch.security.UserIdAuthenticationDetails;
 
 import java.io.IOException;
 
@@ -37,9 +39,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private UserDetailsService userDetailsService;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                   HttpServletResponse response,
-                                   FilterChain filterChain) throws ServletException, IOException {
+    protected void doFilterInternal(@NotNull HttpServletRequest request,
+                                    @NotNull HttpServletResponse response,
+                                    @NotNull FilterChain filterChain) throws ServletException, IOException {
 
         try {
             // 从请求头中获取 JWT Token
@@ -72,12 +74,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 );
 
                             // 设置认证详情
-                            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                            // 将认证信息存入 SecurityContext
-                            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-                            // 更新 Token 最后访问时间
                             Object userIdObj = claims.get("userId");
                             Long userId = null;
                             if (userIdObj instanceof Number) {
@@ -88,6 +84,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                 } catch (NumberFormatException ignored) {
                                 }
                             }
+                            authentication.setDetails(
+                                new UserIdAuthenticationDetails(
+                                    userId,
+                                    new WebAuthenticationDetailsSource().buildDetails(request)
+                                )
+                            );
+
+                            // 将认证信息存入 SecurityContext
+                            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                            // 更新 Token 最后访问时间
                             tokenService.updateLastAccessTime(tokenId, userId);
 
                             log.debug("用户 {} 认证成功，Token: {}", username, tokenId);
@@ -139,7 +146,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         return path.startsWith("/api/ping") ||
-               path.startsWith("/api/ai/chat") ||
+//               path.startsWith("/api/ai/stream") ||
                path.startsWith("/public/") ||
                path.startsWith("/error") ||
                path.startsWith("/actuator/");

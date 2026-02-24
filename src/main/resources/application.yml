@@ -7,9 +7,9 @@ spring:
   # 数据源配置
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/perch_db
+    url: jdbc:postgresql://127.0.0.1:9999/psy_counseling?currentSchema=public
     username: admin
-    password: ${SERVER_POSTGRESQL_PWD}
+    password: fx521891
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5
@@ -45,8 +45,51 @@ spring:
 
   # Spring AI 配置
   ai:
-    zhipuai:
-      api-key: ${ZHIPU_KEY}
+    model:
+      chat: deepseek
+      embedding: ollama
+    # 1. DeepSeek 配置 (用于对话/推理)
+    # 对应依赖: spring-ai-starter-model-deepseek
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY} # 请在环境变量设置 DEEPSEEK_API_KEY
+      base-url: https://api.deepseek.com
+      chat:
+        enabled: true
+        options:
+          # 如果您想用推理模型(R1)，这里写 deepseek-reasoner
+          # 如果是普通对话，写 deepseek-chat
+          model: deepseek-reasoner
+          temperature: 0.6 # 推理模型通常建议温度稍低
+
+    # 2. Ollama 配置 (用于本地 Embedding)
+    # 对应依赖: spring-ai-starter-ollama
+    ollama:
+      base-url: http://localhost:11434
+      embedding:
+        options:
+          model: bge-m3
+
+    vectorstore:
+      pgvector:
+        # 自动初始化表结构 (生产环境建议 false，由 Flyway 管理)
+        initialize-schema: true
+        # 表名
+        table-name: vector_store
+        # [修正] 距离算法: 必须是 COSINE_DISTANCE
+        distance-type: COSINE_DISTANCE
+        # 索引类型: HNSW (推荐，性能优于 IVFFlat)
+        index-type: HNSW
+        # [关键] 维度: 必须匹配 bge-m3 的 1024 (OpenAI 是 1536)
+        dimensions: 1024
+        # 批处理大小
+        max-document-batch-size: 10000
+server:
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+      force-response: true
+      enabled: true
 
 # JWT 配置
 jwt:
