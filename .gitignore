@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Ignore knowledge base content
+src/main/resources/knowledge/**

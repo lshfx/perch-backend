@@ -7,7 +7,7 @@ spring:
   # 数据源配置
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://127.0.0.1:9999/psy_counseling?currentSchema=public
+    url: jdbc:postgresql://127.0.0.1:9999/psy_counseling?currentSchema=public&sslmode=disable
     username: admin
     password: fx521891
     hikari:
@@ -58,7 +58,7 @@ spring:
         options:
           # 如果您想用推理模型(R1)，这里写 deepseek-reasoner
           # 如果是普通对话，写 deepseek-chat
-          model: deepseek-reasoner
+          model: deepseek-chat
           temperature: 0.6 # 推理模型通常建议温度稍低
 
     # 2. Ollama 配置 (用于本地 Embedding)
@@ -96,7 +96,7 @@ jwt:
   # JWT 密钥（生产环境建议使用环境变量或配置中心）
   secret: ${JWT_SECRET:perch-backend-jwt-secret-key-for-development-and-testing-please-change-in-production}
   # JWT 过期时间（毫秒）- 默认 15分钟
-  expiration: ${JWT_EXPIRATION:900000}
+  expiration: ${JWT_EXPIRATION:90000000}
   # JWT 刷新令牌过期时间（毫秒）- 默认 1小时
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
   # JWT Token 前缀

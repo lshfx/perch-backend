@@ -1,5 +1,6 @@
 package com.perch.controller;
 
+import com.perch.pojo.common.Result;
 import com.perch.pojo.entity.ChatSession;
 import com.perch.security.SecurityUtils;
 import com.perch.service.AiChatService;
@@ -29,11 +30,6 @@ public class AiChatController {
 
     private final ChatSessionService chatSessionService;
 
-    /**
-     * AI 聊天接口
-     * @param message 用户消息
-     * @return AI 回答
-     */
     /**
      * AI 聊天接口
      * @param message 用户消息

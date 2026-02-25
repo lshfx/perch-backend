@@ -9,4 +9,5 @@ import reactor.core.publisher.Flux;
  */
 public interface AiChatService{
     Flux<String> streamChat(String message, Long sessionId);
+
 }
