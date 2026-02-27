@@ -5,6 +5,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+
+import java.util.Map;
+
 /**
  * @Author: lsh
  * @Date: 2026/01/25/9:26
@@ -23,6 +26,7 @@ public class AiChatServiceImpl implements AiChatService{
                 .user(userMessage)
                 .advisors(a -> a.param("chat_memory_conversation_id", String.valueOf(sessionId))
                         .param("conversationId",String.valueOf(sessionId)))
+                .toolContext(Map.of("sessionId", sessionId))
                 .stream()
                 .content();
     }

@@ -5,6 +5,7 @@ import com.perch.pojo.entity.ChatSession;
 import com.perch.security.SecurityUtils;
 import com.perch.service.AiChatService;
 import com.perch.service.ChatSessionService;
+import com.perch.service.EmotionAnalysisService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;

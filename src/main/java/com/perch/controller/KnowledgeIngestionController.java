@@ -2,19 +2,21 @@ package com.perch.controller;
 
 import com.perch.pojo.common.Result;
 import com.perch.service.KnowledgeIngestionService;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.concurrent.CompletableFuture;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
- * Knowledge ingestion test endpoints.
+ * Knowledge ingestion endpoints.
  */
-@Slf4j
 @RestController
 @RequestMapping("/api/knowledge")
 @RequiredArgsConstructor
@@ -23,21 +25,36 @@ public class KnowledgeIngestionController {
     private final KnowledgeIngestionService knowledgeIngestionService;
 
     /**
-     * Manually trigger ingestion for the psychology book.
+     * Upload and ingest a single book with dynamic parsing options.
      */
-    @PostMapping("/ingest/single")
-    public Result<String> ingestSingleBook(@RequestParam String fileName) {
-        // 开一个独立的后台线程去干脏活累活
-        CompletableFuture.runAsync(() -> {
-            try {
-                knowledgeIngestionService.ingestSingleBook(fileName);
-            } catch (Exception e) {
-                // 这里只能打日志了，因为 HTTP 请求已经提前返回了
-                log.error("❌ 后台入库书籍 {} 失败: {}", fileName, e.getMessage());
-            }
-        });
+    @PostMapping(value = "/ingest/single", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<Map<String, Object>> ingestSingleBook(
+            @RequestPart("file") MultipartFile file,
+            @RequestParam(required = false) String bookName,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Integer chunkSize,
+            @RequestParam(required = false) Integer minChunkSizeChars,
+            @RequestParam(required = false) Integer minChunkLengthToEmbed,
+            @RequestParam(required = false) Integer maxNumChunks,
+            @RequestParam(required = false) Boolean keepSeparator) {
+        String taskId = knowledgeIngestionService.ingestSingleBook(
+                file,
+                bookName,
+                category,
+                chunkSize,
+                minChunkSizeChars,
+                minChunkLengthToEmbed,
+                maxNumChunks,
+                keepSeparator
+        );
 
-        // 瞬间返回给前端（Postman），再也不会超时了！
-        return Result.success(null, "书籍《" + fileName + "》已加入后台入库队列，请留意控制台进度日志！");
+        Map<String, Object> data = new HashMap<>();
+        data.put("fileName", file.getOriginalFilename());
+        data.put("bookName", bookName);
+        data.put("category", category);
+        data.put("taskId", taskId);
+
+        return Result.success(data, "ingestion queued");
     }
 }

@@ -1,68 +1,165 @@
 package com.perch.service.impl;
 
+import com.perch.exception.CustomException;
 import com.perch.service.KnowledgeIngestionService;
-import lombok.RequiredArgsConstructor;
+import java.io.IOException;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
+
 public class KnowledgeIngestionServiceImpl implements KnowledgeIngestionService {
 
     private final VectorStore vectorStore;
 
-    // 神奇的写法：自动扫描 knowledge 目录下所有的 epub 文件！
-    @Value("classpath:knowledge/*.epub")
-    private Resource[] epubFiles;
+    private final Executor taskExecutor;
+
+    public KnowledgeIngestionServiceImpl(VectorStore vectorStore, @Qualifier("archiveTaskExecutor")Executor taskExecutor) {
+        this.vectorStore = vectorStore;
+        this.taskExecutor = taskExecutor;
+    }
 
     @Override
-    public void ingestSingleBook(String fileName) {
-        log.info("▶️ 收到入库指令，准备处理单本书籍: {}", fileName);
-
-        // 动态加载 knowledge 目录下的指定文件
-        Resource resource = new ClassPathResource("knowledge/" + fileName);
-        if (!resource.exists()) {
-            log.error("❌ 找不到文件: {}", fileName);
-            throw new RuntimeException("文件不存在: " + fileName);
+    public String ingestSingleBook(
+            MultipartFile file,
+            String bookName,
+            String category,
+            Integer chunkSize,
+            Integer minChunkSizeChars,
+            Integer minChunkLengthToEmbed,
+            Integer maxNumChunks,
+            Boolean keepSeparator) {
+        if (file == null || file.isEmpty()) {
+            throw new CustomException(400, "upload file is required");
         }
 
+        String originalFilename = file.getOriginalFilename();
+        String resolvedBookName = resolveBookName(bookName, originalFilename);
+        String resolvedCategory = StringUtils.hasText(category) ? category : "general";
+
+        int resolvedChunkSize = resolvePositive(chunkSize, 300, "chunkSize");
+        int resolvedMinChunkSizeChars = resolvePositive(minChunkSizeChars, 100, "minChunkSizeChars");
+        int resolvedMinChunkLengthToEmbed = resolvePositive(minChunkLengthToEmbed, 5, "minChunkLengthToEmbed");
+        int resolvedMaxNumChunks = resolvePositive(maxNumChunks, 10000, "maxNumChunks");
+        boolean resolvedKeepSeparator = keepSeparator == null || keepSeparator;
+
+        byte[] fileBytes = readFileBytes(file);
+        String taskId = UUID.randomUUID().toString();
+
+        log.info("Queue ingestion task: taskId={}, file={}, bookName={}, category={}",
+                taskId, originalFilename, resolvedBookName, resolvedCategory);
+
+        CompletableFuture.runAsync(
+                () -> ingestAsync(
+                        taskId,
+                        fileBytes,
+                        originalFilename,
+                        resolvedBookName,
+                        resolvedCategory,
+                        resolvedChunkSize,
+                        resolvedMinChunkSizeChars,
+                        resolvedMinChunkLengthToEmbed,
+                        resolvedMaxNumChunks,
+                        resolvedKeepSeparator),
+                taskExecutor
+        ).exceptionally(ex -> {
+            log.error("Ingestion task failed: taskId={}, file={}, error={}",
+                    taskId, originalFilename, ex.getMessage());
+            return null;
+        });
+
+        return taskId;
+    }
+
+    private void ingestAsync(
+            String taskId,
+            byte[] fileBytes,
+            String originalFilename,
+            String bookName,
+            String category,
+            int chunkSize,
+            int minChunkSizeChars,
+            int minChunkLengthToEmbed,
+            int maxNumChunks,
+            boolean keepSeparator) {
         try {
-            // 1. 读取
-            log.info("   📖 正在使用 Tika 解析电子书内容...");
+            Resource resource = new ByteArrayResource(fileBytes) {
+                @Override
+                public String getFilename() {
+                    return originalFilename;
+                }
+            };
+
             TikaDocumentReader tikaReader = new TikaDocumentReader(resource);
             List<Document> documents = tikaReader.get();
 
-            // 2. 注入元数据
-            String bookName = fileName.replace(".epub", "").replace(".txt", "");
             for (Document doc : documents) {
                 doc.getMetadata().put("book_name", bookName);
-                doc.getMetadata().put("category", "psychology");
+                doc.getMetadata().put("category", category);
+                doc.getMetadata().put("task_id", taskId);
+                if (StringUtils.hasText(originalFilename)) {
+                    doc.getMetadata().put("source_file", originalFilename);
+                }
             }
 
-            // 3. 切片 (保持咱们测试好的完美参数)
-            TokenTextSplitter splitter = new TokenTextSplitter(300, 100, 5, 10000, true);
+            TokenTextSplitter splitter = new TokenTextSplitter(
+                    chunkSize,
+                    minChunkSizeChars,
+                    minChunkLengthToEmbed,
+                    maxNumChunks,
+                    keepSeparator
+            );
             List<Document> splitDocuments = splitter.apply(documents);
-            log.info("   ✂️ 【{}】解析切片完成，共获得 {} 个知识段落。", bookName, splitDocuments.size());
+            log.info("Split completed: taskId={}, book={}, chunks={}", taskId, bookName, splitDocuments.size());
 
-            // 4. 向量化入库
-            log.info("   🧠 正在调用 bge-m3 进行向量化计算，请保持网络和程序稳定...");
             vectorStore.add(splitDocuments);
-
-            log.info("✅ 【{}】入库成功！安全落地！", bookName);
-
+            log.info("Ingestion completed: taskId={}, book={}", taskId, bookName);
         } catch (Exception e) {
-            log.error("❌ 处理书籍 {} 时发生致命错误: {}", fileName, e.getMessage());
-            throw new RuntimeException("入库失败: " + e.getMessage());
+            log.error("Ingestion failed: taskId={}, file={}, error={}", taskId, originalFilename, e.getMessage());
         }
+    }
+
+    private byte[] readFileBytes(MultipartFile file) {
+        try {
+            return file.getBytes();
+        } catch (IOException e) {
+            throw new CustomException(500, "failed to read upload file");
+        }
+    }
+
+    private String resolveBookName(String bookName, String originalFilename) {
+        if (StringUtils.hasText(bookName)) {
+            return bookName;
+        }
+        if (!StringUtils.hasText(originalFilename)) {
+            return "unknown";
+        }
+        int lastDot = originalFilename.lastIndexOf('.');
+        return lastDot > 0 ? originalFilename.substring(0, lastDot) : originalFilename;
+    }
+
+    private int resolvePositive(Integer value, int defaultValue, String fieldName) {
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value <= 0) {
+            throw new CustomException(400, fieldName + " must be > 0");
+        }
+        return value;
     }
 }

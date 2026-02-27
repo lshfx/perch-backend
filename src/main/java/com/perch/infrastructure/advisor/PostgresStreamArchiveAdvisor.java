@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicReference;
+
+import com.perch.service.EmotionAnalysisService;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClientRequest;
@@ -27,9 +29,12 @@ public class PostgresStreamArchiveAdvisor implements StreamAdvisor {
     private final ChatMessageService chatMessageService;
     private final Executor taskExecutor;
 
-    public PostgresStreamArchiveAdvisor(ChatMessageService chatMessageService, @Qualifier("archiveTaskExecutor") Executor taskExecutor) {
+    private final EmotionAnalysisService emotionAnalysisService;
+
+    public PostgresStreamArchiveAdvisor(ChatMessageService chatMessageService, @Qualifier("archiveTaskExecutor") Executor taskExecutor, EmotionAnalysisService emotionAnalysisService) {
         this.chatMessageService = chatMessageService;
         this.taskExecutor = taskExecutor;
+        this.emotionAnalysisService = emotionAnalysisService;
     }
 
     @Override
@@ -106,6 +111,12 @@ public class PostgresStreamArchiveAdvisor implements StreamAdvisor {
                 msg.setMsgType("text");
                 msg.setEmotionTag(null);
                 chatMessageService.save(msg);
+                Long userId = msg.getId();
+                log.info("回显的信息ID是{}", userId);
+                if (userId != null && "user".equals(role)) {
+                    emotionAnalysisService.analyzeAndSaveEmotionAsync(userId, msg.getContent());
+                }
+
             } catch (Exception e) {
                 log.error("Archive failed: {}", e.getMessage());
             }

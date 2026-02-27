@@ -65,9 +65,14 @@ spring:
     # 对应依赖: spring-ai-starter-ollama
     ollama:
       base-url: http://localhost:11434
+      chat:
+        options:
+          model: qwen3:0.6b   # 👈 填入你刚才测试通过的神仙小模型
+          temperature: 0.1    # 👈 温度调低，让它做个无情的 JSON 提取机器
       embedding:
         options:
           model: bge-m3
+
 
     vectorstore:
       pgvector:
