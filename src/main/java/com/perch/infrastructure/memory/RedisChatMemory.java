@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import com.perch.constants.RedisConstants;
 import com.perch.pojo.dto.request.MessageHolder;
 import com.perch.security.SecurityUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +22,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 @Slf4j
 public class RedisChatMemory implements ChatMemory {
 
-    private static final String KEY_PREFIX = "chat:history:";
+    private static final String KEY_PREFIX = RedisConstants.AI_CHAT_PREFIX;
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final int memorySize;

@@ -1,5 +1,8 @@
 package com.perch.service.impl;
 
+import com.perch.exception.CustomException;
+import com.perch.infrastructure.tool.PsychologicalTools;
+import com.perch.security.SecurityUtils;
 import com.perch.service.AiChatService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
@@ -21,12 +24,17 @@ public class AiChatServiceImpl implements AiChatService{
 
     @Override
     public Flux<String> streamChat(String userMessage, Long sessionId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        if (userId == null) {
+            throw new CustomException("用户id获取失败");
+        }
 
         return chatClient.prompt()
                 .user(userMessage)
                 .advisors(a -> a.param("chat_memory_conversation_id", String.valueOf(sessionId))
-                        .param("conversationId",String.valueOf(sessionId)))
-                .toolContext(Map.of("sessionId", sessionId))
+                        .param("conversationId",String.valueOf(sessionId))
+                        .param("userId", userId))
+                .toolContext(Map.of("userId", userId,"sessionId", sessionId))
                 .stream()
                 .content();
     }

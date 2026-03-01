@@ -1,7 +1,10 @@
 package com.perch.config;
 
+import com.perch.infrastructure.advisor.MemoryCompressionAdvisor;
 import com.perch.infrastructure.advisor.PostgresStreamArchiveAdvisor;
+import com.perch.infrastructure.advisor.UserPersonaAdvisor;
 import com.perch.infrastructure.memory.RedisChatMemory;
+import com.perch.infrastructure.tool.PsychologicalTools;
 import com.perch.service.ChatMessageService;
 import com.perch.service.EmotionAnalysisService;
 import org.springframework.ai.chat.client.ChatClient;
@@ -27,24 +30,6 @@ import java.util.stream.Collectors;
 
 @Configuration
 public class AiConfig {
-
-    /**
-     * 1. 声明查资料工具为 Spring Bean。
-     * 神奇机制：加上 @Description 注解，Spring AI 会自动把它识别为一个大模型可以调用的 Function Tool！
-     */
-    @Bean
-    @Description("当用户表达负面情绪、心理困扰，或者你需要专业的心理学知识（如情绪急救、CBT疗法）来提供干预建议时，请主动调用此工具搜索知识库。如果只是日常寒暄，无需调用。")
-    public Function<DocumentSearchTool.Request, DocumentSearchTool.Response> searchPsychologyKnowledge(VectorStore vectorStore) {
-        return request -> {
-            List<Document> docs = vectorStore.similaritySearch(
-                    SearchRequest.builder().query(request.query()).topK(3).similarityThreshold(0.60).build()
-            );
-            if (docs.isEmpty()) {
-                return new DocumentSearchTool.Response("未找到具体的心理学策略，请仅凭借你的共情能力给予安抚。");
-            }
-            return new DocumentSearchTool.Response(docs.stream().map(org.springframework.ai.document.Document::getText).collect(Collectors.joining("\n---\n")));
-        };
-    }
 
     @Bean
     public OllamaChatModel ollamaChatModel() {
@@ -73,7 +58,10 @@ public class AiConfig {
     public ChatClient chatClient(
             @Qualifier("deepSeekChatModel") ChatModel chatModel,
             ChatMemory chatMemory,
-            PostgresStreamArchiveAdvisor postgresAdvisor) {
+            PostgresStreamArchiveAdvisor postgresAdvisor,
+            UserPersonaAdvisor personaAdvisor,
+            MemoryCompressionAdvisor compressionAdvisor,
+            PsychologicalTools psychologicalTools) {
 
         return ChatClient.builder(chatModel)
                 // 全局树洞人设
@@ -87,12 +75,13 @@ public class AiConfig {
                             3. 先肯定和接纳用户的情绪，再巧妙运用心理学技巧给出轻量级建议。
                             4. 保持第一人称口吻进行对话。
                         """)
-                // 全局绑定刚刚写的 @Bean 工具，注意名字是方法名
-                .defaultToolNames("searchPsychologyKnowledge")
-                // 全局绑定记忆顾问（这里不写死 ID）
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
-                // 全局绑定 Postgres 持久化归档顾问
-                .defaultAdvisors(postgresAdvisor)
+                .defaultAdvisors(
+                        personaAdvisor,
+                        compressionAdvisor,
+                        MessageChatMemoryAdvisor.builder(chatMemory).order(0).build(),
+                        postgresAdvisor
+                )
+                .defaultTools(psychologicalTools)
                 .build();
     }
 

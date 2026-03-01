@@ -5,16 +5,22 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.perch.mapper.ChatMessageMapper;
+import com.perch.mapper.UserPersonaTagMapper;
 import com.perch.pojo.entity.ChatMessage;
+import com.perch.pojo.entity.UserPersonaTag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
+import org.springframework.ai.document.Document;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -22,6 +28,8 @@ public class PsychologicalTools {
 
     private final ChatMessageMapper chatMessageMapper;
     private final ObjectMapper objectMapper;
+    private final UserPersonaTagMapper personaTagMapper;
+    private final VectorStore vectorStore;
 
     /**
      * 工具：调取情绪历史（Memory & Evolution）
@@ -86,22 +94,19 @@ public class PsychologicalTools {
      * 场景：检测到极端的负面意图，立即停止大模型自由发挥，下发专业热线。
      */
     @Tool(
-        description = "当用户表达出明显的自残、自杀意图，或处于极度危险的心理危机时，必须立即调用此工具。",
-        returnDirect = true // 关键：开启此选项后，工具返回值将绕过大模型，直接作为最终结果发送给前端！
+            description = "当用户表达出明显的自残、自杀意图，或处于极度危险的心理危机时，必须立即调用此工具。",
+            returnDirect = true
     )
     public String triggerEmergencyProtocol(
             @ToolParam(description = "触发危机的原话片段") String triggerText,
             ToolContext toolContext) {
 
-        RunnableConfig config = (RunnableConfig) toolContext.getContext().get("config");
-        String userId = (String) config.metadata("user_id").orElse("anonymous");
+        // ✅ 直接从上下文中获取我们之前塞进去的 userId
+        Long userId = (Long) toolContext.getContext().get("userId");
+        String userIdentifier = userId != null ? String.valueOf(userId) : "anonymous";
 
-        // 1. 触发你后端的 JWT 黑名单/封禁逻辑，或者给管理员发 WebSocket 紧急警报
-        // alertService.triggerHighRiskAlert(userId, triggerText);
-        
-        System.out.println("🚨 [警告] 触发危机干预协议！用户：" + userId + "，危险文本：" + triggerText);
+        System.out.println("🚨 [警告] 触发危机干预协议！用户：" + userIdentifier + "，危险文本：" + triggerText);
 
-        // 2. 由于 returnDirect = true，这段字符串会直接通过你的 SSE 接口流向客户端
         return """
                系统检测到您当前可能正在经历极度的痛苦。您的生命对我们非常重要。
                大模型对话已暂时挂起。
@@ -110,5 +115,65 @@ public class PsychologicalTools {
                【抑郁症援助专线】：010-82951332
                我们一直都在，请给生命一次求救的机会。
                """;
+    }
+
+    /*
+     * 工具 3：构建独立的用户画像
+     * 场景：当大模型在多轮对话中，敏锐地“嗅”到用户性格底色时，它会主动触发这个工具
+     *
+     */
+    @Tool(description = "当在对话中深刻察觉到用户的长期性格底色、依恋模式或核心心理防御机制时，强制调用此工具为用户打上心理学标签（如：回避型依恋、讨好型人格、非黑即白思维等）。")
+    public String updatePersonaTags(
+            @ToolParam(description = "要添加的心理学标签，尽量使用专业且中性的心理学词汇。") String tagName,
+            @ToolParam(description = "结合用户的原话，给出贴上该标签的深度分析和理由。") String reasoning,
+            ToolContext toolContext) {
+
+        // 1. 从工具上下文中获取当前的 sessionId和userId
+        Long sessionId = (Long) toolContext.getContext().get("sessionId");
+        Long userId = (Long) toolContext.getContext().get("userId");
+
+        if (userId == null) {
+            return "内部错误：无法获取userId，画像保存失败";
+        }
+
+        if (sessionId == null) {
+            return "内部错误：无法获取 sessionId，画像保存失败。";
+        }
+
+        // 2. 构造实体并保存到 PostgreSQL
+        UserPersonaTag tag = new UserPersonaTag();
+        tag.setUserId(userId);
+        tag.setSessionId(sessionId);
+        tag.setTagName(tagName);
+        tag.setReasoning(reasoning);
+        personaTagMapper.insert(tag);
+
+        System.out.println("🧠 [画像进化] 大模型主动为 Session " + sessionId + " 贴上标签：【" + tagName + "】");
+
+        // 3. 返回给大模型的执行结果
+        return "用户画像标签【" + tagName + "】已成功存入长期记忆数据库。在接下来的回复中，请隐式地结合此画像特征，提供更具针对性的抱持与关怀，但不要生硬地说出该标签名称。";
+    }
+
+    /*
+     * 工具 4：Rag知识库检索
+     * 场景：当用户表达负面情绪、心理困扰，或者你需要专业的心理学知识（如情绪急救、CBT疗法）来提供干预建议时，请主动调用此工具搜索知识库
+     *
+     */
+    @Tool(description = "当用户表达负面情绪、心理困扰，或者你需要专业的心理学知识（如情绪急救、CBT疗法）来提供干预建议时，请主动调用此工具搜索知识库。如果只是日常寒暄，无需调用。")
+    public String searchPsychologyKnowledge(
+            @ToolParam(description = "要搜索的心理学关键词或相关问题描述") String query) { // 👈 直接接收 String，不再需要 Request 对象
+
+        List<Document> docs = vectorStore.similaritySearch(
+                SearchRequest.builder().query(query).topK(3).similarityThreshold(0.60).build()
+        );
+
+        if (docs.isEmpty()) {
+            return "未找到具体的心理学策略，请仅凭借你的共情能力给予安抚。";
+        }
+
+        // 直接返回拼接好的字符串，不再需要 Response 对象
+        return docs.stream()
+                .map(Document::getText)
+                .collect(Collectors.joining("\n---\n"));
     }
 }

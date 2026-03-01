@@ -67,7 +67,7 @@ public class RedisConstants {
     /**
      * AI 对话历史前缀
      */
-    public static final String AI_CHAT_PREFIX = "ai:chat:";
+    public static final String AI_CHAT_PREFIX = "chat:history:";
 
     /**
      * 用户偏好设置前缀
