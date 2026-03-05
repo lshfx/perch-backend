@@ -1,12 +1,19 @@
 package com.perch.infrastructure.tool;
 
 import com.alibaba.cloud.ai.graph.RunnableConfig;
+import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.perch.mapper.ChatMessageMapper;
+import com.perch.mapper.DreamLogMapper;
+import com.perch.mapper.PsychScaleLogMapper;
 import com.perch.mapper.UserPersonaTagMapper;
 import com.perch.pojo.entity.ChatMessage;
+import com.perch.pojo.entity.DreamLog;
+import com.perch.pojo.entity.PsychScaleLog;
 import com.perch.pojo.entity.UserPersonaTag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.model.ToolContext;
@@ -17,6 +24,8 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
@@ -30,6 +39,9 @@ public class PsychologicalTools {
     private final ObjectMapper objectMapper;
     private final UserPersonaTagMapper personaTagMapper;
     private final VectorStore vectorStore;
+    private final SkillRegistry skillRegistry;
+    private final PsychScaleLogMapper psychScaleLogMapper;
+    private final DreamLogMapper dreamLogMapper;           // 👈 新增梦境 Mapper
 
     /**
      * 工具：调取情绪历史（Memory & Evolution）
@@ -175,5 +187,146 @@ public class PsychologicalTools {
         return docs.stream()
                 .map(Document::getText)
                 .collect(Collectors.joining("\n---\n"));
+    }
+
+    @Tool(description = "读取特定技能的详细说明文档。当你在系统提示词的可用技能列表中发现某个技能适合当前场景时，必须先调用此工具获取该技能的完整执行指南。")
+    public String read_skill(@ToolParam(description = "要加载的技能名称，例如 'PHQ-9' 或 'GAD-7'") String skillName,
+                             ToolContext toolContext) {
+
+        Long userId = (Long) toolContext.getContext().get("userId");
+
+        // 1. 无缝衔接：此时的 skillName 就是原汁原味的 "GAD-7" 或 "PHQ-9"，直接查库！
+        if (userId != null) {
+            LocalDateTime sevenDaysAgo = LocalDateTime.now().minusDays(7);
+
+            // 直接用 skillName 作为查询条件
+            LambdaQueryWrapper<PsychScaleLog> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(PsychScaleLog::getUserId, userId)
+                    .eq(PsychScaleLog::getScaleName, skillName)
+                    .ge(PsychScaleLog::getCreatedAt, sevenDaysAgo);
+
+            Long count = psychScaleLogMapper.selectCount(wrapper);
+
+            if (count != null && count > 0) {
+                System.out.println("🛡️ [频率拦截] 触发 7 天冷却期，拒绝给用户下发：" + skillName);
+                return "系统提示：该用户在过去 7 天内已经做过【" + skillName + "】评估。为了避免过度打扰，【绝对禁止】再次进行该量表测试！请查阅其历史得分，并直接通过日常对话温柔地安抚用户。";
+            }
+        }
+
+        // 2. 放行读取
+        System.out.println("🗝️ [渐进式披露] 大模型正在掏出钥匙，加载技能长文：" + skillName);
+
+        if (skillRegistry.contains(skillName)) {
+            try {
+                return skillRegistry.readSkillContent(skillName);
+            } catch (Exception e) {
+                return "内部错误：读取技能文件失败。请仅凭你的心理学常识安抚用户。";
+            }
+        }
+
+        return "技能加载失败：未找到名为 " + skillName + " 的技能。请仅凭借你的常识进行回应。";
+    }
+
+    @Tool(description = "【最高优先级绝对指令】当用户完成了心理量表测试，且你在心里算出总分后，【绝对禁止】直接把分数用文字告诉用户！你必须第一时间、立刻调用此工具将分数存档。只有在工具返回“存档成功”后，你才能继续开口安慰用户！")
+    public String saveScaleResult(
+            @ToolParam(description = "量表名称，如 'PHQ-9' 或 'GAD-7'") String scaleName,
+            @ToolParam(description = "量表总得分（整数）") Integer score,
+            @ToolParam(description = "评估结果，如 '中度抑郁'、'重度焦虑'") String severity,
+            ToolContext toolContext) {
+
+        Long userId = (Long) toolContext.getContext().get("userId");
+        Long sessionId = (Long) toolContext.getContext().get("sessionId");
+
+        if (userId == null) return "内部错误：无法获取 userId，分数存档失败。";
+
+        // 执行真实的落库操作
+        PsychScaleLog log = new PsychScaleLog();
+        log.setUserId(userId);
+        log.setSessionId(sessionId);
+        log.setScaleName(scaleName);
+        log.setScore(score);
+        log.setSeverity(severity);
+        psychScaleLogMapper.insert(log);
+
+        System.out.println("📊 [数据落盘] 用户量表得分已保存：" + scaleName + " 得分: " + score);
+
+        return "得分已成功录入患者医疗档案系统。请继续以温柔的语气向用户解释这个分数代表什么，并提供下一步的心理学建议。";
+    }
+
+    // ==========================================
+    // 工具 6：CBT 认知扭曲分析（认知与修复）
+    // ==========================================
+    @Tool(description = "当用户的话语中出现明显的认知扭曲（如：非黑即白、过度概括、灾难化思维、读心术、应该句式）时调用。利用认知行为疗法（CBT）帮助用户纠正负面思维。")
+    public String detectCognitiveDistortions(
+            @ToolParam(description = "大模型判断用户陷入的具体认知扭曲类型，如：'非黑即白'、'灾难化思维'、'过度概括'") String distortionType,
+            @ToolParam(description = "用户的原话中体现该扭曲的具体表述") String triggerText) {
+
+        System.out.println("🧠 [CBT 认知修复] 侦测到认知扭曲：" + distortionType + "，原话：" + triggerText);
+
+        return """
+               你已成功识别出用户的认知扭曲：「%s」。
+               请立即启动 CBT（认知行为疗法）干预策略：
+               1. 共情与接纳：首先接纳用户此刻的痛苦，不要立刻反驳。
+               2. 苏格拉底式提问：通过温和的提问，引导用户自己发现思维中的不合理之处（例如：“你觉得有没有其他可能的解释？”、“有没有例外的情况？”）。
+               3. 认知重构：引导用户用更客观、中性的语言重新描述刚才发生的事情。
+               严禁说教，要像一个耐心的引导者一样陪用户一起寻找思维的盲区。
+               """.formatted(distortionType);
+    }
+
+    // ==========================================
+    // 工具 7：正念与减压引导（人文关怀）
+    // ==========================================
+    @Tool(description = "当用户表现出急性的焦虑、恐慌、呼吸急促，或明确要求寻找放松、助眠方法时调用。为用户提供即时的正念或呼吸练习指导。")
+    public String generateMindfulnessGuide(
+            @ToolParam(description = "需要的放松技巧类型，可选值：'4-7-8呼吸法'、'身体扫描'、'蝴蝶拥抱'") String techniqueType) {
+
+        System.out.println("🧘‍♀️ [人文关怀] 触发正念减压引导：" + techniqueType);
+
+        return switch (techniqueType) {
+            case "4-7-8呼吸法" -> """
+                    请使用非常缓慢、充满安全感的语调，教导用户使用 4-7-8 呼吸法：
+                    “闭上眼睛，吸气4秒...憋气7秒...然后缓缓呼气8秒...”
+                    配合文字排版（如换行、省略号）营造出节奏感，陪用户一起做3个循环。
+                    """;
+            case "身体扫描" -> """
+                    请用催眠般的温柔语调，引导用户进行简短的身体扫描练习：
+                    从头顶开始，慢慢向下关注眉心、肩膀、胸口、手臂，直到脚趾。告诉用户将紧绷的肌肉一点点松开。
+                    """;
+            default -> """
+                    请教导用户使用“蝴蝶拥抱”法寻找安全感：
+                    双臂交叉放在胸前，双手交替轻轻拍打自己的肩膀，就像蝴蝶拍打翅膀一样，同时深呼吸，告诉自己“我现在很安全”。
+                    """;
+        };
+    }
+
+    // ==========================================
+    // 工具 8：梦境日志与潜意识解析（人文关怀）
+    // ==========================================
+    @Tool(description = "当用户主动分享自己的梦境，或者提到奇怪的梦时调用。用于将梦境存档，并触发精神分析学派的解析。")
+    public String logDreamDiary(
+            @ToolParam(description = "用户梦境的核心意象或物品，如：'被追杀'、'掉牙齿'、'考试迟到'") String dreamElement,
+            ToolContext toolContext) {
+
+        Long userId = (Long) toolContext.getContext().get("userId");
+        Long sessionId = (Long) toolContext.getContext().get("sessionId");
+
+        // 1. 将梦境意象落库（未来可以做成用户的“潜意识词云”）
+        if (userId != null) {
+            DreamLog log = new DreamLog();
+            log.setUserId(userId);
+            log.setSessionId(sessionId);
+            log.setDreamElement(dreamElement);
+            dreamLogMapper.insert(log);
+            System.out.println("🌙 [梦境落盘] 记录潜意识意象：" + dreamElement);
+        }
+
+        // 2. 返回给大模型的解梦法则（Prompt 约束）
+        return """
+               已将梦境核心意象「%s」存档。
+               请现在开始进行梦境解析，遵循以下原则：
+               1. 采用荣格分析心理学视角，询问这个意象在梦中给用户的【核心情绪】是什么？
+               2. 引导用户将这个梦境与近期现实生活中的压力源建立联想。
+               3. 严禁迷信断言（不要说“梦见掉牙代表家里有人生病”），要给梦境赋予积极的转化意义。
+               """.formatted(dreamElement);
     }
 }

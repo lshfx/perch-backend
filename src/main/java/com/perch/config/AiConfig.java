@@ -1,5 +1,8 @@
 package com.perch.config;
 
+import com.alibaba.cloud.ai.graph.advisors.SkillPromptAugmentAdvisor;
+import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
+import com.alibaba.cloud.ai.graph.skills.registry.classpath.ClasspathSkillRegistry;
 import com.perch.infrastructure.advisor.MemoryCompressionAdvisor;
 import com.perch.infrastructure.advisor.PostgresStreamArchiveAdvisor;
 import com.perch.infrastructure.advisor.UserPersonaAdvisor;
@@ -31,6 +34,22 @@ import java.util.stream.Collectors;
 @Configuration
 public class AiConfig {
 
+    // 1. 注册图书管理员（SkillRegistry）
+    @Bean
+    public SkillRegistry skillRegistry() {
+        return ClasspathSkillRegistry.builder()
+                .classpathPath("skills") // 告诉它扫描 resources/skills 目录
+                .build();
+    }
+
+    @Bean
+    public SkillPromptAugmentAdvisor skillPromptAugmentAdvisor(SkillRegistry skillRegistry) {
+        return SkillPromptAugmentAdvisor.builder()
+                .order(-8)
+                .skillRegistry(skillRegistry)
+                .build();
+    }
+
     @Bean
     public OllamaChatModel ollamaChatModel() {
         // 1. 初始化底层 API 客户端 (指向本地默认端口)
@@ -61,6 +80,7 @@ public class AiConfig {
             PostgresStreamArchiveAdvisor postgresAdvisor,
             UserPersonaAdvisor personaAdvisor,
             MemoryCompressionAdvisor compressionAdvisor,
+            SkillPromptAugmentAdvisor skillAdvisor,
             PsychologicalTools psychologicalTools) {
 
         return ChatClient.builder(chatModel)
@@ -77,6 +97,7 @@ public class AiConfig {
                         """)
                 .defaultAdvisors(
                         personaAdvisor,
+                        skillAdvisor,
                         compressionAdvisor,
                         MessageChatMemoryAdvisor.builder(chatMemory).order(0).build(),
                         postgresAdvisor

@@ -1,12 +1,26 @@
 package com.perch.config;
 
+import com.perch.infrastructure.interceptor.RateLimitInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
+@RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
+
+    private final RateLimitInterceptor rateLimitInterceptor;
+
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        // 将限流拦截器专门挂载到 AI 聊天流式接口上
+        registry.addInterceptor(rateLimitInterceptor)
+                .addPathPatterns("/api/ai/stream"); // 只拦截发消息的接口
+    }
 
     /**
      * 配置 Spring MVC 异步请求的线程池 (消除 SimpleAsyncTaskExecutor 警告)
